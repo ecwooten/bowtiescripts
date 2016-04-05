@@ -9,12 +9,14 @@ Script files are located in *lib* subdirectory. To run, execute with `node ./lib
 ### bowtie-counter
 **run bowtie alignments against multiple sequence read files, aggregating read counts and summarizing alignments**
 
+==================
 required arguments:
   * --fasta_file - path to fasta file to align against
   * --fastq_directory - path to directory containing fastq files for alignment (if bowtie2 is used, these files may be .gz or .bz2 archives)
   * --output_directory - path to directory to output resulting count files to
   * --summary_file - path to save a summary file to, summarizing the results of bowtie alignments
 
+==================
 optional arguments:
   * --bowtie_cmd - command to run bowtie, must be available in PATH or resolve to bowtie binary (default: "bowtie2")
   * --bowtie_args.\[argument name (with - or -- if required)\]=\[argument value\] - arguments to be passed to bowtie command. defaults:
