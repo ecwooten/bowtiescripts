@@ -17,10 +17,10 @@ required arguments:
   *--summary_file - path to save a summary file to, summarizing the results of bowtie alignments
 
 optional arguments:
-  *--bowtie_cmd - command to run bowtie, must be available in PATH or resolve to bowtie binary (default: "bowtie2")
-  *--bowtie_args.\[argument name (with - or -- if required)\]=\[argument value\] - arguments to be passed to bowtie command. defaults:
-    *-p=\[parallel cores to use (all cores on your system)\]
-    *-x=\[path to index files\]
+  *  --bowtie_cmd - command to run bowtie, must be available in PATH or resolve to bowtie binary (default: "bowtie2")
+  *  --bowtie_args.\[argument name (with - or -- if required)\]=\[argument value\] - arguments to be passed to bowtie command. defaults:
+    * -p=\[parallel cores to use (all cores on your system)\]
+    *  -x=\[path to index files\]
     *-U=\[path to fastq file\]
 
       refer to documentation for bowtie options:
