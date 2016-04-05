@@ -7,7 +7,7 @@ Git repository of scripts useful for running bowtie alignments and aggregating r
 Script files are located in *lib* subdirectory. To run, execute with `node ./lib/[script_name]` or make script executable and execute with just `./lib/[script_name]`
 
 ### bowtie-counter
-*run bowtie alignments against multiple sequence read files, aggregating read counts and summarizing alignments*
+_run bowtie alignments against multiple sequence read files, aggregating read counts and summarizing alignments_
 
 required arguments:
   * --fasta_file - path to fasta file to align against
