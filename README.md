@@ -24,16 +24,16 @@ optional arguments:
     *-U=\[path to fastq file\]
 
       refer to documentation for bowtie options:
-        bowtie2 - <http://bowtie-bio.sourceforge.net/bowtie2/manual.shtml#command-line>
-        bowtie - <http://bowtie-bio.sourceforge.net/manual.shtml#command-line>
+      bowtie2 - <http://bowtie-bio.sourceforge.net/bowtie2/manual.shtml#command-line>
+      bowtie - <http://bowtie-bio.sourceforge.net/manual.shtml#command-line>
 
   *--bowtie\_build\_cmd - command to run bowtie build, must be available in PATH or resolve to bowtie binary (default: "bowtie2-build")
   *--bowtie\_build\_args.\[argument name (with - or -- if required)\]=\[argument value\] - arguments to be passed to bowtie build command. defaults:
     *-f=\[path to fasta file\]
 
       refer to documentation for bowtie index build options:
-        bowtie2-build - <http://bowtie-bio.sourceforge.net/bowtie2/manual.shtml#command-line-1>
-        bowtie-build - <http://bowtie-bio.sourceforge.net/manual.shtml#command-line-1>
+      bowtie2-build - <http://bowtie-bio.sourceforge.net/bowtie2/manual.shtml#command-line-1>
+      bowtie-build - <http://bowtie-bio.sourceforge.net/manual.shtml#command-line-1>
 
   *--index_file - path to save index files to (default: temp file)
   *--fastq\_file\_list - csv file of fastq files to run (optional, files will be filtered to those matching files included in this list, prefixes are permissable)
