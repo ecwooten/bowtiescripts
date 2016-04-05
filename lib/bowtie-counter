@@ -1,0 +1,386 @@
+#!/usr/bin/env node
+
+var Path = require('path')
+  , Optionall = require('optionall')
+  , FSTK = require('fstk')
+  , Async = require('async')
+  , _ = require('underscore')
+  , Belt = require('jsbelt')
+  , Util = require('util')
+  , Winston = require('winston')
+  , Events = require('events')
+  , Spinner = require('its-thinking')
+  , CP = require('child_process')
+  , OS = require('os')
+  , CSV = require('fast-csv')
+;
+
+var O = new Optionall({
+                       '__dirname': Path.resolve(module.filename + '/../..')
+                     , 'file_priority': ['package.json']
+                     });
+
+var Log = new Winston.Logger();
+Log.add(Winston.transports.Console, {'level': 'debug', 'colorize': true, 'timestamp': false});
+
+var Spin = new Spinner(4);
+
+var GB = _.defaults(O.argv, {
+  'bowtie_build_cmd': 'bowtie2-build' //command to execute bowtie-build
+, 'bowtie_build_args': {} //arguments passed to bowtie-build
+, 'bowtie_cmd': 'bowtie2' //command to execute bowtie
+, 'bowtie_args': {} //arguments passed to bowtie
+, 'index_file': Path.join(OS.tmpdir(), Path.sep + Belt.uuid()) //location where bowtie index will be saved
+, 'remove_index': true //remove bowtie index after running
+  //fasta_file - path to fasta file used for alignment (and index building)
+  //fastq_directory - directory where fastq files are located
+  //fastq_file_list - list of fastq files to run
+  //output_directory - directory where count files will be saved
+  //summary_file - where to save file listing bowtie alignment summaries
+, 'output_format': 'csv' //format to save count files and summary file (json or csv)
+, 'verbose': false
+, 'concurrency': 1
+});
+GB['bowtie_build_args'] = _.defaults(GB.bowtie_build_args, {
+  //arguments to pass to bowtie-build command
+  '-f': GB.fasta_file
+});
+GB['bowtie_args'] = _.defaults(GB.bowtie_args, {
+  //arguments to pass to bowtie command
+  '-p': OS.cpus().length
+, '-x': GB.index_file
+});
+
+//optionally remove index on exit
+var Cleanup = function(err){
+  var gb = {};
+  return Async.waterfall([
+    function(cb){
+      if (!GB.remove_index || !GB.index_file) return cb();
+
+      Log.warn('Removing index "' + GB.index_file + '"...');
+
+      return FSTK.rm(GB.index_file, Belt.cw(cb));
+    }
+  ], function(err){
+    return process.exit();
+  });
+};
+process.on('SIGTERM', Cleanup);
+process.on('SIGHUP', Cleanup);
+process.on('SIGINT', Cleanup);
+
+Async.waterfall([
+  function(cb){
+    //required parameters
+    _.each([
+      'fasta_file'
+    , 'fastq_directory'
+    , 'output_directory'
+    , 'summary_file'
+    ], function(p){
+      if (!GB[p]){
+        GB.usage = true; //exit and show usage
+        Log.error(p + ' is required');
+      }
+    });
+
+    //print usage message and exit
+    if (GB.h || GB.help || GB.usage){
+      Log.info([
+      , ''
+      , '/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////'
+      , 'bowtie-counter: run bowtie alignments against multiple sequence read files, aggregating read counts and summarizing alignments'
+      , '/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////'
+      , ''
+      , 'required arguments:'
+      , '\t--fasta_file - path to fasta file to align against'
+      , '\t--fastq_directory - path to directory containing fastq files for alignment (if bowtie2 is used, these files may be .gz or .bz2 archives)'
+      , '\t--output_directory - path to directory to output resulting count files to'
+      , '\t--summary_file - path to save a summary file to, summarizing the results of bowtie alignments'
+      , ''
+      , 'optional arguments:'
+      , '\t--bowtie_cmd - command to run bowtie, must be available in PATH or resolve to bowtie binary (default: "bowtie2")'
+      , '\t--bowtie_args.[argument name (with - or -- if required)]=[argument value] - arguments to be passed to bowtie command. defaults:'
+      , '\t\t-p=[' + OS.cpus().length + ' - parallel cores to use (all cores on your system)]'
+      , '\t\t-x=[path to index files]'
+      , '\t\t-U=[path to fastq file]'
+      , '\trefer to documentation for bowtie options:'
+      , '\t\t\tbowtie2 - http://bowtie-bio.sourceforge.net/bowtie2/manual.shtml#command-line'
+      , '\t\t\tbowtie - http://bowtie-bio.sourceforge.net/manual.shtml#command-line'
+      , ''
+      , '\t--bowtie_build_cmd - command to run bowtie build, must be available in PATH or resolve to bowtie binary (default: "bowtie2-build")'
+      , '\t--bowtie_build_args.[argument name (with - or -- if required)]=[argument value] - arguments to be passed to bowtie build command. defaults:'
+      , '\t\t-f=[path to fasta file]'
+      , '\trefer to documentation for bowtie index build options:'
+      , '\t\t\tbowtie2-build - http://bowtie-bio.sourceforge.net/bowtie2/manual.shtml#command-line-1'
+      , '\t\t\tbowtie-build - http://bowtie-bio.sourceforge.net/manual.shtml#command-line-1'
+      , ''
+      , '\t--index_file - path to save index files to (default: temp file)'
+      , '\t--fastq_file_list - csv file of fastq files to run (optional, files will be filtered to those matching files included in this list, prefixes are permissable)'
+      , '\t--remove_index - remove index files after running (default: true)'
+      , '\t--output_format - format to save count and summary files, json or csv (default: csv)'
+      , '\t--concurrency - number of alignments / counts to run at once (default: 1)'
+      , '\t--help|h|usage - print usage'
+      , '\t--verbose - print child process output (default: false)'
+      , ''
+      , ''
+      ].join('\n'));
+      return process.exit();
+    }
+
+    //add extension to summary file
+    GB.summary_file = GB.summary_file.match(/(\.json|\.csv)$/i) ? GB.summary_file : (GB.summary_file + '.' + GB.output_format);
+
+    Spin.start();
+    return cb();
+  }
+, function(cb){
+    Log.info('Building index using ' + GB.bowtie_build_cmd + ' - using "' + GB.fasta_file + '", saving to "' + GB.index_file + '"...');
+
+    var args = Belt.arrayDefalse(_.flatten(_.pairs(GB.bowtie_build_args).concat([
+      GB.index_file
+    ])));
+
+    if (GB.verbose) Log.debug('command: ' + [GB.bowtie_build_cmd].concat(args).join(' '));
+
+    var cp = CP.spawn(GB.bowtie_build_cmd, args);
+
+    cp.on('error', function(err){
+      GB['err'] = err;
+    });
+
+    cp.on('exit', function(){
+      if (!GB.err) Log.info('...done!');
+      return cb(GB.err);
+    });
+
+    if (GB.verbose){
+      cp.stdout.on('data', function(d){
+        Log.debug('\tstdout: ' + d.toString());
+      });
+
+      cp.stderr.on('data', function(d){
+        Log.debug('\tstderr: ' + d.toString());
+      });
+    }
+  }
+, function(cb){
+    Log.info('Loading FASTQ files to align from "' + GB.fastq_directory + '"...');
+    return FSTK._fs.readdir(GB.fastq_directory, Belt.cs(cb, GB, 'fastq_files', 1, 0));
+  }
+, function(cb){
+    if (!GB.fastq_file_list) return cb();
+
+    Log.info('Loading FASTQ file list...')
+
+    GB['fastq_prefixes'] = [];
+
+    return FSTK._fs.createReadStream(GB.fastq_file_list)
+               .pipe(CSV())
+               .on('data', function(data){
+                 if (!data[0]) return;
+                 GB.fastq_prefixes.push(data[0]);
+               })
+               .on('end', Belt.cw(cb));
+  }
+, function(cb){
+    if (!GB.fastq_file_list) Log.info('Filtering files based on ' + GB.fastq_prefixes.length + ' prefixes...');
+
+    GB.fastq_files = _.chain(GB.fastq_files)
+                      .filter(function(f){
+                        if (_.any(GB.fastq_prefixes) && !_.some(GB.fastq_prefixes, function(p){
+                          return f.indexOf(p) === 0;
+                        })) return false;
+
+                        return f.match(/(\.fastq|\.fastq\.bz2|\.fastq\.gz)$/i);
+                      })
+                      .value();
+
+    if (!_.any(GB.fastq_files)) return cb(new Error('no fastq files found'));
+
+    Log.info('...found ' + GB.fastq_files.length + ' fastq files to be aligned...');
+
+    //make output directory
+    return FSTK.mkdir(GB.output_directory, Belt.cw(cb, 0));
+  }
+, function(cb){
+    //make directory for summary file
+    var sumpath = GB.summary_file.split(Path.sep);
+    sumpath.pop();
+    sumpath = sumpath.join(Path.sep);
+
+    return FSTK.mkdir(sumpath, Belt.cw(cb, 0));
+  }
+, function(cb){
+    var summary = []
+      , count = 0;
+
+    return Async.eachLimit(GB.fastq_files, GB.concurrency, function(f, cb2){
+      Log.info('Running alignment and counting "' + f + '" [' + (++count) + ' of ' + GB.fastq_files.length + ']...');
+
+      if (GB.verbose) Log.profile(f);
+
+      var gb = {};
+      return Async.waterfall([
+        function(cb3){
+          gb['counts'] = {};
+          gb['rcount'] = 0;
+
+          var args = Belt.arrayDefalse(_.flatten(_.pairs(GB.bowtie_args).concat([
+                '-U'
+              , Path.join(GB.fastq_directory, Path.sep + f)
+              ])));
+
+          if (GB.verbose) Log.debug('command: ' + [GB.bowtie_cmd].concat(args).join(' '));
+
+          var cp = CP.spawn(GB.bowtie_cmd, args);
+    
+          cp.on('error', function(err){
+            GB['err'] = err;
+          });
+
+          cp.on('exit', function(){
+            if (!GB.err) Log.info('...finished aligning...');
+            return cb3(GB.err);
+          });
+
+          var stdout = '';
+          cp.stdout.on('data', function(d){
+            stdout += d.toString();
+
+            //if (GB.verbose) Log.debug('\tstdout: ' + d);
+
+            var lines = stdout.split(/\n+|\r+/);
+            stdout = lines.pop() || '';
+
+            //process lines for counts
+            _.each(lines, function(l){
+              if (!l || l.match(/^@/)) return; //header
+
+              var cols = l.split(/\s+/);
+              if (cols.length < 3 || cols[1] === '4' || cols[2] === '*') return; //unaligned read
+
+              gb.counts[cols[2]] = (gb.counts[cols[2]] || 0) + 1; //aggregate count
+              gb.rcount++;
+
+              process.stdout.cursorTo(0);
+              process.stdout.write(String(gb.rcount) + ' reads');
+            });
+          });
+    
+          cp.stderr.on('data', function(d){
+            d = d.toString();
+            if (GB.verbose) Log.debug('\tstderr: ' + d);
+            gb['stderr'] = (gb.stderr || '') + d;
+          });
+        }
+      , function(cb3){
+          gb['counts_path'] = Path.join(GB.output_directory, Path.sep + f.replace(/(\.fastq|\.fastq\.bz2|\.fastq\.gz)$/i, '.counts.')
+                            + GB.output_format);
+
+          Log.info('...writing counts file "' + gb.counts_path + '"...');
+
+          if (GB.output_format === 'json') return FSTK.writeJSON(gb.counts_path, gb.counts, Belt.cw(cb3, 0));
+
+          //convert json to csv
+          var output = FSTK._fs.createWriteStream(gb.counts_path)
+            , csv = CSV.createWriteStream({'headers': true});
+
+          output.on('finish', Belt.cw(cb3, 0));
+
+          csv.pipe(output);
+
+          _.each(gb.counts, function(v, k){
+            return csv.write({'read': k, 'count': v});
+          });
+
+          return csv.end();
+        }
+      , function(cb3){
+          Log.info('...adding to summary file "' + GB.summary_file + '"...');
+
+          gb['stderr'] = gb.stderr || '';
+
+          var sum;
+
+          if (GB.bowtie_cmd.match(/bowtie2$/i)){
+            //bowtie2
+            sum = {
+              'fastq_file': f
+            , 'total_reads': Belt.cast(gb.stderr.split(' reads;').shift(), 'number')
+            , 'unpaired': Belt.cast(gb.stderr.split(/of these:\n\s+/)[1].split(' (').shift(), 'number')
+            , '0_aligns': Belt.cast(gb.stderr.split(/of these:\n\s+/)[2].split(' (').shift(), 'number')
+            , '1_align': Belt.cast(gb.stderr.split(/\n\s+/)[3].split(' (').shift(), 'number')
+            , 'multiple_aligns': Belt.cast(gb.stderr.split(/\n\s+/)[4].split(' (').shift(), 'number')
+            , 'overall_rate': Belt.cast(gb.stderr.split('% overall alignment rate').shift().split('\n').pop(), 'number') / 100
+            };
+      
+            _.extend(sum, {
+              '%_unpaired': (sum.unpaired / sum.total_reads)
+            , '%_0_aligns': (sum['0_aligns'] / sum.total_reads)
+            , '%_1_align': (sum['1_align'] / sum.total_reads)
+            , '%_multiple_aligns': (sum['multiple_aligns'] / sum.total_reads)
+            , 'total_counted_reads': gb.rcount
+            , 'total_unique_reads': _.size(gb.counts)
+            });
+          } else {
+            //bowtie
+            sum = {
+              'fastq_file': f
+            , 'total_reads': Belt.cast((gb.stderr.split('# reads processed: ')[1] || '').split('\n').shift(), 'number')
+            , '0_aligns': Belt.cast((gb.stderr.split('# reads that failed to align: ')[1] || '').split(' (').shift(), 'number')
+            , '1_align': Belt.cast((gb.stderr.split('# reads with at least one reported alignment: ')[1] || '').split(' (').shift(), 'number')
+            , 'suppressed_aligns': Belt.cast((gb.stderr.split('alignments suppressed due to -m: ')[1] || '').split(' (').shift(), 'number')
+            };
+
+            _.extend(sum, {
+              '%_0_aligns': (sum['0_aligns'] / sum.total_reads)
+            , '%_1_align': (sum['1_align'] / sum.total_reads)
+            , '%_suppressed_aligns': (sum['suppressed_aligns'] / sum.total_reads)
+            , 'total_counted_reads': gb.rcount
+            , 'total_unique_reads': _.size(gb.counts)
+            });
+          }
+
+          Log.info(Belt.stringify(sum)); //output summary
+
+          summary.push(sum); //add to summary
+
+          if (GB.output_format === 'json') return FSTK.writeJSON(GB.summary_file, summary, Belt.cw(cb3, 0));
+
+          //convert json to csv
+          var output = FSTK._fs.createWriteStream(GB.summary_file)
+            , csv = CSV.createWriteStream({'headers': true});
+
+          output.on('finish', Belt.cw(cb3, 0));
+
+          csv.pipe(output);
+
+          _.each(summary, function(v, k){
+            return csv.write(v);
+          });
+
+          return csv.end();
+        }
+      , function(cb3){
+          Log.info('...done');
+          if (GB.verbose) Log.profile(f);
+
+          return cb3();
+        }
+      ], Belt.cw(cb2, 0));
+    }, Belt.cw(cb, 0));
+  }
+], function(err){
+  Spin.stop();
+  if (err) Log.error(err);
+
+  if (!GB.remove_index || !GB.index_file) return process.exit(err ? 1 : 0);
+
+  Log.warn('Removing index "' + GB.index_file + '"...');
+
+  return FSTK.rm(GB.index_file, function(){
+    return process.exit(err ? 1 : 0);
+  });
+});

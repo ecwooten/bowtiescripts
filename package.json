@@ -1,0 +1,33 @@
+{
+  "name": "bowtiescripts",
+  "description": "utility scripts for bowtie",
+  "version": "0.1.0",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/sackio/bowtiescripts.git"
+  },
+  "engines": {
+    "node": ">= 0.8.0"
+  },
+  "scripts": {
+    "test": "grunt nodeunit"
+  },
+  "devDependencies": {
+    "grunt-contrib-jshint": "~0.6.4",
+    "grunt-contrib-nodeunit": "~0.2.0",
+    "grunt-contrib-watch": "~0.5.3",
+    "grunt": "~0.4.5"
+  },
+  "keywords": []
+, "dependencies": {
+    "async": "*",
+    "underscore": "*",
+    "jsbelt": "*",
+    "fstk": "*",
+    "optionall": "*"
+  , "moment": "*"
+  , "fast-csv": "*"
+  , "its-thinking": "*"
+  , "winston": "*"
+  }
+}
