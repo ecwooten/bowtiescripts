@@ -61,7 +61,7 @@ required arguments:
 ==================
 optional arguments:
 
-  *--concurrency - number of count files to tabulate at once (default: number of CPU cores on current system)
+  * --concurrency - number of count files to tabulate at once (default: number of CPU cores on current system)
   * --help|h|usage - print usage
 
 ==================
