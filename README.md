@@ -72,3 +72,16 @@ These scripts are currently designed to run with [Node.js](https://nodejs.org/en
 
   * [Mac Node.js Installer](https://nodejs.org/dist/v4.4.2/node-v4.4.2.pkg)
   * [Windows Node.js Installer](https://nodejs.org/dist/v4.4.2/node-v4.4.2-x86.msi)
+  * 
+  ## REQUIRED NODE MODULES
+You'll also need to use NPM to install some modules that your default node installation won't have. The ones to install (with npm install):
+
+* async
+* fast-csv
+* fstk
+* its-thinking
+* jsbelt
+* optionall
+* underscore
+* winston
+
